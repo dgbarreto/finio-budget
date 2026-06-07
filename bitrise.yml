@@ -1,0 +1,45 @@
+---
+format_version: '13'
+default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
+project_type: android
+meta:
+  bitrise.io:
+    stack: linux-docker-android-22.04
+app:
+  envs:
+    - GRADLEW_PATH: "./gradlew"
+    - MODULE: budget
+workflows:
+  ci:
+    description: Build and test on every push
+    steps:
+      - git-clone@8: {}
+      - install-missing-android-tools@3:
+          inputs:
+            - gradlew_path: "$GRADLEW_PATH"
+      - gradle-runner@2:
+          inputs:
+            - gradle_task: ":budget:bundleAndroidMainAar"
+            - gradlew_path: "$GRADLEW_PATH"
+      - gradle-runner@2:
+          inputs:
+            - gradle_task: ":budget:compileKotlinIosArm64"
+            - gradlew_path: "$GRADLEW_PATH"
+    triggers:
+      push:
+        - branch: main
+  release:
+    description: Publish to GitHub Packages on tag
+    steps:
+      - git-clone@8: {}
+      - install-missing-android-tools@3:
+          inputs:
+            - gradlew_path: "$GRADLEW_PATH"
+      - gradle-runner@2:
+          inputs:
+            - gradle_task: ":budget:publish"
+            - gradlew_path: "$GRADLEW_PATH"
+    triggers:
+      tag:
+        - name:
+            regex: ".*"
