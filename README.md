@@ -1,24 +1,145 @@
-This is a Kotlin Multiplatform project targeting Android, iOS.
+# finio-budget
 
-* [/iosApp](./iosApp/iosApp) contains an iOS application. Even if you’re sharing your UI with Compose Multiplatform,
-  you need this entry point for your iOS app. This is also where you should add SwiftUI code for your project.
+KMP budget module for the Finio platform. Encapsulates all budget logic — API calls, spending progress calculation, and budget state — published to Maven for consumption by `finio-app`.
 
-* [/shared](./shared/src) is for code that will be shared across your Compose Multiplatform applications.
-  It contains several subfolders:
-  - [commonMain](./shared/src/commonMain/kotlin) is for code that’s common for all targets.
-  - Other folders are for Kotlin code that will be compiled for only the platform indicated in the folder name.
-    For example, if you want to use Apple’s CoreCrypto for the iOS part of your Kotlin app,
-    the [iosMain](./shared/src/iosMain/kotlin) folder would be the right place for such calls.
-    Similarly, if you want to edit the Desktop (JVM) specific part, the [jvmMain](./shared/src/jvmMain/kotlin)
-    folder is the appropriate location.
+## Stack
 
-### Running the apps
+- **Language**: Kotlin Multiplatform
+- **HTTP**: Ktor Client 3.1.3
+- **Serialization**: kotlinx.serialization 1.8.1
+- **Coroutines**: kotlinx.coroutines 1.10.2
+- **DI**: Koin 4.0.0
+- **Publication**: GitHub Packages (Maven)
+- **CI/CD**: Bitrise
 
-Use the run configurations provided by the run widget in your IDE's toolbar. You can also use these commands and options:
+## Targets
 
-- Android app: `./gradlew :androidApp:assembleDebug`
-- iOS app: open the [/iosApp](./iosApp) directory in Xcode and run it from there.
+| Target | Status |
+|--------|--------|
+| Android | ✅ |
+| iOS Arm64 | ✅ |
+| iOS Simulator Arm64 | ✅ |
 
----
+## Module structure
 
-Learn more about [Kotlin Multiplatform](https://www.jetbrains.com/help/kotlin-multiplatform-dev/get-started.html)…
+```
+budget/src/
+  commonMain/
+    kotlin/dev/finio/budget/
+      data/
+        dto/
+          BudgetDtos.kt              ← API request and response DTOs
+        mapper/
+          BudgetMapper.kt            ← DTO → domain model mappers
+        remote/
+          BudgetRemoteDataSource.kt  ← Ktor API calls
+        repository/
+          BudgetRepositoryImpl.kt    ← Repository implementation
+      di/
+        BudgetModule.kt              ← Koin module definition
+      domain/
+        model/
+          Budget.kt                  ← Budget domain model
+          BudgetPeriod.kt            ← enum: MONTHLY | WEEKLY
+        repository/
+          BudgetRepository.kt        ← Repository interface
+      presentation/
+        BudgetViewModel.kt           ← ViewModel with StateFlow
+```
+
+## API endpoints
+
+All endpoints are served by `finio-api` deployed on Railway.
+
+| Method | Route | Description | Auth |
+|--------|-------|-------------|------|
+| GET | `/budgets` | List budgets with spending progress | ✓ |
+| POST | `/budgets` | Create budget | ✓ |
+| PUT | `/budgets/:id` | Update budget | ✓ |
+| DELETE | `/budgets/:id` | Delete budget | ✓ |
+
+## ViewModel state
+
+```kotlin
+sealed class BudgetState {
+    object Loading : BudgetState()
+    data class Success(val budgets: List<Budget>) : BudgetState()
+    data class Error(val message: String) : BudgetState()
+}
+```
+
+## Budget model
+
+```kotlin
+data class Budget(
+    val id: String,
+    val category: String,
+    val limit: Double,
+    val period: BudgetPeriod,   // MONTHLY | WEEKLY
+    val startDate: String,
+    val endDate: String,
+    val spent: Double,          // calculated by the API
+    val remaining: Double,      // calculated by the API
+    val percentage: Int,        // calculated by the API
+    val exceeded: Boolean       // calculated by the API
+)
+```
+
+## DI usage
+
+Initialize from your app shell (not from this module):
+
+```kotlin
+// Android — inside Application.onCreate()
+initKoin {
+    modules(budgetModule(
+        baseUrl = "https://your-api.railway.app",
+        tokenProvider = { tokenStorage.getToken() }
+    ))
+}
+
+// iOS — inside AppDelegate or @main
+// use KMP bridge to call initKoin
+```
+
+## Maven artifacts
+
+Published to GitHub Packages under `dev.finio` group:
+
+| Artifact | Description |
+|----------|-------------|
+| `budget-android` | Android AAR |
+| `budget-iosarm64` | iOS Arm64 klib |
+| `budget-iossimulatorarm64` | iOS Simulator Arm64 klib |
+| `budget-kmp` | KMP metadata |
+
+## CI/CD
+
+| Trigger | Workflow | Action |
+|---------|----------|--------|
+| Push to `main` | `ci` | Compiles Android AAR + iOS Arm64 |
+| Any tag (e.g. `0.1.0`) | `release` | Publishes all artifacts to GitHub Packages |
+
+## Build
+
+```bash
+# Compile all targets
+./gradlew :budget:assemble
+
+# Publish to local Maven (~/.m2)
+./gradlew :budget:publishToMavenLocal
+
+# Publish to GitHub Packages (requires GITHUB_ACTOR and GITHUB_TOKEN)
+./gradlew :budget:publish
+```
+
+## Key versions
+
+```toml
+kotlin = "2.3.21"
+agp = "9.0.1"
+ktor = "3.1.3"
+koin = "4.0.0"
+kotlinx-coroutines = "1.10.2"
+kotlinx-serialization = "1.8.1"
+```
